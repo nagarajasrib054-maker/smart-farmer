@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Farmer – Voice Assistant</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; background: #f2f7f2; color: #1b3022; display: flex; justify-content: center; }
+    .app { width: 100%; max-width: 480px; min-height: 100vh; background: #ffffff; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+    header { background: #1e6f3d; color: #fff; padding: 16px; display: flex; justify-content: space-between; align-items: center; }
+    header h1 { margin: 0; font-size: 20px; }
+    select { padding: 8px 10px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; background: #e8f5e9; color: #1e6f3d; }
+    .quick-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 14px; background: #eef6f0; }
+    .q-btn { background: #fff; border: 2px solid #cbe3d1; border-radius: 14px; padding: 12px 6px; text-align: center; cursor: pointer; font-weight: 700; font-size: 13px; color: #1b3022; }
+    .q-btn span { display: block; font-size: 26px; margin-bottom: 4px; }
+    .q-btn:active { transform: scale(0.97); }
+    .chat-area { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+    .msg { padding: 12px 14px; border-radius: 14px; max-width: 88%; line-height: 1.45; font-size: 15px; }
+    .bot { background: #e8f5e9; border: 1px solid #c8e6c9; align-self: flex-start; }
+    .user { background: #1e6f3d; color: #fff; align-self: flex-end; }
+    .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: #d0ebd6; color: #14532d; margin-bottom: 6px; }
+    .actions-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .mini-btn { background: #1e6f3d; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: 600; }
+    .mini-btn.warn { background: #b45309; }
+    .controls { padding: 16px; border-top: 1px solid #e0e8e2; background: #fafcfa; text-align: center; }
+    .mic-btn { width: 84px; height: 84px; border-radius: 50%; border: none; background: #16a34a; color: #fff; font-size: 34px; cursor: pointer; box-shadow: 0 6px 18px rgba(22,163,74,0.35); transition: 0.2s; }
+    .mic-btn.listening { background: #dc2626; animation: pulse 1.2s infinite; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(220,38,38,0.6); } 70% { box-shadow: 0 0 0 18px rgba(220,38,38,0); } 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0); } }
+    .status { margin-top: 8px; font-size: 13px; font-weight: 600; color: #4b5563; }
+    .sim-bar { display: flex; gap: 6px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+    .sim-btn { font-size: 11px; padding: 4px 8px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer; color: #334155; }
+    input[type="file"] { display: none; }
+    .preview-img { max-width: 140px; border-radius: 8px; margin-top: 6px; display: block; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>🌾 Smart Farmer</h1>
+      <select id="langSelect" onchange="changeLang()">
+        <option value="te-IN">తెలుగు (Telugu)</option>
+        <option value="hi-IN">हिंदी (Hindi)</option>
+        <option value="ta-IN">தமிழ் (Tamil)</option>
+        <option value="kn-IN">ಕನ್ನಡ (Kannada)</option>
+        <option value="en-IN" selected>English (India)</option>
+      </select>
+    </header>
+
+    <div class="quick-grid">
+      <button class="q-btn" onclick="handleQuery('weather')"><span>🌦️</span>Weather</button>
+      <button class="q-btn" onclick="document.getElementById('leafInput').click()"><span>📷</span>Crop Photo</button>
+      <button class="q-btn" onclick="handleQuery('market')"><span>💰</span>Mandi Price</button>
+    </div>
+    <input type="file" id="leafInput" accept="image/*" onchange="handlePhoto(event)" />
+
+    <div class="chat-area" id="chatArea"></div>
+
+    <div class="controls">
+      <button id="micBtn" class="mic-btn" onclick="toggleMic()">🎤</button>
+      <div class="status" id="statusText">Tap mic and speak in your language</div>
+      <div class="sim-bar">
+        <button class="sim-btn" onclick="handleQuery('yellow leaves')">Test: "Yellow leaves"</button>
+        <button class="sim-btn" onclick="handleQuery('hinglish fertilizer')">Test: Mixed Language</button>
+        <button class="sim-btn" onclick="handleQuery('noise')">Test: Noise Error</button>
+        <button class="sim-btn" onclick="handleQuery('unknown')">Test: Expert Escalation</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const chatArea = document.getElementById('chatArea');
+    const statusText = document.getElementById('statusText');
+    const micBtn = document.getElementById('micBtn');
+    const langSelect = document.getElementById('langSelect');
+
+    const responses = {
+      'en-IN': {
+        welcome: "Namaskar! Welcome to Smart Farmer. Tap the mic and ask about crop disease, weather, or today's market price.",
+        yellow: "Yellow leaves on tomato plants usually happen due to lack of water, nitrogen deficiency, or early blight. Check for dark spots, avoid overwatering, and spray neem oil. Take a leaf photo for a closer check.",
+        weather: "Tomorrow afternoon, light rain (60% chance) is expected in your village. Avoid spraying fertilizer tomorrow morning.",
+        market: "Today's local mandi rate for Grade-A Tomatoes is ₹1,850 per quintal (₹18.50/kg), up by ₹150 from yesterday.",
+        hinglish: "Understood! For your tomato crop, apply NPK fertilizer 15 days after transplanting, preferably in the evening when soil has moisture.",
+        noise: "Sorry, there is heavy background noise like wind or tractor. Please move to a quieter spot and speak slowly again.",
+        unknown: "I am not 100% sure about this rare crop issue. To prevent crop loss, please consult your nearest Krishi Vigyan Kendra (KVK) agriculture officer.",
+        photo: "Photo analyzed: Mild leaf curl and yellowing detected (Confidence: 78%). Possible whitefly or nutrient stress. Remove affected leaves and use yellow sticky traps."
+      },
+      'te-IN': {
+        welcome: "నమస్కారం! స్మార్ట్ ఫార్మర్‌కు స్వాగతం. పంట తెగుళ్లు, వాతావరణం లేదా మార్కెట్ ధరల గురించి మైక్ నొక్కి అడగండి.",
+        yellow: "టమాటా ఆకులు పసుపు రంగులోకి మారడానికి నీటి ఎద్దడి లేదా ఆకు మచ్చ తెగులు కారణం కావచ్చు. వేప నూనె పిచికారీ చేయండి లేదా ఆకు ఫోటో తీసి పంపండి.",
+        weather: "రేపు మధ్యాహ్నం మీ గ్రామంలో తేలికపాటి వర్షం పడే అవకాశం ఉంది. రేపు ఉదయం ఎరువులు వేయడం వాయిదా వేయండి.",
+        market: "ఈరోజు మార్కెట్లో టమాటా ధర క్వింటాల్‌కు ₹1,850 (కిలో ₹18.50) గా ఉంది.",
+        hinglish: "అర్థమైంది! టమాటా పంటకు నాటిన 15 రోజుల తర్వాత సాయంత్రం సమయంలో ఎరువులు వేయడం మంచిది.",
+        noise: "క్షమించండి, చుట్టుపక్కల గాలి లేదా ట్రాక్టర్ శబ్దం ఎక్కువగా ఉంది. దయచేసి కొంచెం నిశ్శబ్దంగా ఉన్న చోటుకు వెళ్లి మళ్లీ చెప్పండి.",
+        unknown: "ఈ సమస్యపై నాకు పూర్తి స్పష్టత లేదు. పంట నష్టం జరగకుండా దగ్గరలోని కృషి విజ్ఞాన కేంద్రం (KVK) అధికారిని సంప్రదించండి.",
+        photo: "ఫోటో పరిశీలించబడింది: ఆకులు ముడత మరియు పసుపు రంగు కనిపిస్తోంది. తెల్లదోమ నివారణకు పసుపు రంగు జిగురు అట్టలు వాడండి."
+      },
+      'hi-IN': {
+        welcome: "नमस्कार! स्मार्ट किसान में आपका स्वागत है। फसल की बीमारी, मौसम या मंडी भाव जानने के लिए माइक दबाकर बोलें।",
+        yellow: "टमाटर के पत्ते पीले पड़ना पानी की कमी या झुलसा रोग के कारण हो सकता है। नीम के तेल का छिड़काव करें या पत्ते की फोटो खींचकर दिखाएं।",
+        weather: "कल दोपहर आपके गांव में हल्की बारिश होने की संभावना है। कल सुबह खाद न डालें।",
+        market: "आज स्थानीय मंडी में टमाटर का भाव ₹1,850 प्रति क्विंटल (₹18.50 प्रति किलो) है।",
+        hinglish: "समझ गया! टमाटर की फसल में रोपाई के 15 दिन बाद शाम के समय खाद डालना सबसे अच्छा रहता है।",
+        noise: "माफ़ कीजिए, पीछे हवा या ट्रैक्टर का शोर बहुत ज़्यादा है। कृपया शांत जगह पर जाकर धीरे से फिर बोलें।",
+        unknown: "मुझे इस समस्या पर पूरा भरोसा नहीं है। नुकसान से बचने के लिए अपने नजदीकी कृषि विज्ञान केंद्र (KVK) विशेषज्ञ से सलाह लें।",
+        photo: "फोटो की जांच पूरी हुई: पत्तों में हल्का पीलापन और मरोड़ दिख रहा है। सफेद मक्खी से बचाव के लिए पीले चिपचिपे कार्ड लगाएं।"
+      },
+      'ta-IN': {
+        welcome: "வணக்கம்! ஸ்மார்ட் ஃபார்மர் செயலிக்கு வரவேற்கிறோம். பயிர் நோய், வானிலை அல்லது சந்தை விலை பற்றி மைக்கை அழுத்திப் பேசுங்கள்.",
+        yellow: "தக்காளி இலைகள் மஞ்சள் நிறமாக மாறுவதற்கு தண்ணீர் பற்றாக்குறை அல்லது இலைப்புள்ளி நோய் காரணமாக இருக்கலாம். வேப்ப எண்ணெய் தெளிக்கவும்.",
+        weather: "நாளை மதியம் உங்கள் கிராமத்தில் லேசான மழை பெய்ய வாய்ப்புள்ளது. நாளை காலை உரம் இடுவதைத் தவிர்க்கவும்.",
+        market: "இன்றைய சந்தையில் தக்காளி விலை குவிண்டாலுக்கு ₹1,850 ஆக உள்ளது.",
+        hinglish: "புரிந்தது! தக்காளி பயிருக்கு நடவு செய்த 15 நாட்களுக்குப் பிறகு மாலை நேரத்தில் உரம் இடவும்.",
+        noise: "மன்னிக்கவும், பின்னணி சத்தம் அதிகமாக உள்ளது. அமைதியான இடத்திற்குச் சென்று மீண்டும் மெதுவாகப் பேசுங்கள்.",
+        unknown: "இந்தப் பிரச்சனை குறித்து எனக்கு முழுமையாகத் தெரியவில்லை. அருகிலுள்ள வேளாண் அறிவியல் நிலைய (KVK) அதிகாரியைத் தொடர்பு கொள்ளவும்.",
+        photo: "புகைப்படம் ஆய்வு செய்யப்பட்டது: இலைகளில் மஞ்சள் நிறம் தெரிகிறது. வெள்ளை ஈக்களைக் கட்டுப்படுத்த மஞ்சள் ஒட்டும் பொறிகளைப் பயன்படுத்தவும்."
+      },
+      'kn-IN': {
+        welcome: "ನಮಸ್ಕಾರ! ಸ್ಮಾರ್ಟ್ ಫಾರ್ಮರ್‌ಗೆ ಸ್ವಾಗತ. ಬೆಳೆ ರೋಗ, ಹವಾಮಾನ ಅಥವಾ ಮಾರುಕಟ್ಟೆ ಬೆಲೆ ತಿಳಿಯಲು ಮೈಕ್ ಒತ್ತಿ ಮಾತನಾಡಿ.",
+        yellow: "ಟೊಮೆಟೊ ಎಲೆಗಳು ಹಳದಿಯಾಗಲು ನೀರಿನ ಕೊರತೆ ಅಥವಾ ಎಲೆ ಚುಕ್ಕೆ ರೋಗ ಕಾರಣವಿರಬಹುದು. ಬೇವಿನ ಎಣ್ಣೆ ಸಿಂಪಡಿಸಿ ಅಥವಾ ಎಲೆಯ ಫೋಟೋ ಕಳುಹಿಸಿ.",
+        weather: "ನಾಳೆ ಮಧ್ಯಾಹ್ನ ನಿಮ್ಮ ಗ್ರಾಮದಲ್ಲಿ ಸಾಧಾರಣ ಮಳೆಯಾಗುವ ಸಾಧ್ಯತೆ ಇದೆ. ನಾಳೆ ಬೆಳಿಗ್ಗೆ ಗೊಬ್ಬರ ಹಾಕಬೇಡಿ.",
+        market: "ಇಂದಿನ ಮಾರುಕಟ್ಟೆಯಲ್ಲಿ ಟೊಮೆಟೊ ಬೆಲೆ ಕ್ವಿಂಟಾಲ್‌ಗೆ ₹1,850 ಇದೆ.",
+        hinglish: "ಅರ್ಥವಾಯಿತು! ಟೊಮೆಟೊ ಬೆಳೆಗೆ ನಾಟಿ ಮಾಡಿದ 15 ದಿನಗಳ ನಂತರ ಸಂಜೆ ವೇಳೆ ಗೊಬ್ಬರ ಹಾಕುವುದು ಉತ್ತಮ.",
+        noise: "ಕ್ಷಮಿಸಿ, ಹಿನ್ನೆಲೆ ಶಬ್ದ ಹೆಚ್ಚಾಗಿದೆ. ದಯವಿಟ್ಟು ಶಾಂತ ಸ್ಥಳಕ್ಕೆ ಹೋಗಿ ನಿಧಾನವಾಗಿ ಮತ್ತೆ ಮಾತನಾಡಿ.",
+        unknown: "ಈ ಸಮಸ್ಯೆಯ ಬಗ್ಗೆ ನನಗೆ ಸಂಪೂರ್ಣ ಖಚಿತವಿಲ್ಲ. ಹತ್ತಿರದ ಕೃಷಿ ವಿಜ್ಞಾನ ಕೇಂದ್ರದ (KVK) ತಜ್ಞರನ್ನು ಸಂಪರ್ಕಿಸಿ.",
+        photo: "ಫೋಟೋ ಪರಿಶೀಲಿಸಲಾಗಿದೆ: ಎಲೆಗಳಲ್ಲಿ ಹಳದಿ ಬಣ್ಣ ಕಂಡುಬಂದಿದೆ. ಬಿಳಿ ನೊಣ ನಿಯಂತ್ರಣಕ್ಕೆ ಹಳದಿ ಅಂಟು ಬಲೆಗಳನ್ನು ಬಳಸಿ."
+      }
+    };
+
+    function getPack() {
+      return responses[langSelect.value] || responses['en-IN'];
+    }
+
+    function speak(text) {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = langSelect.value;
+      utter.rate = 0.92;
+      window.speechSynthesis.speak(utter);
+    }
+
+    function addMessage(text, sender, tag = '', imgSrc = '', showKvk = false) {
+      const div = document.createElement('div');
+      div.className = `msg ${sender}`;
+      let html = '';
+      if (tag) html += `<div class="badge">${tag}</div><br/>`;
+      html += `<span>${text}</span>`;
+      if (imgSrc) html += `<img src="${imgSrc}" class="preview-img" alt="Crop leaf" />`;
+      if (sender === 'bot') {
+        html += `<div class="actions-row">
+          <button class="mini-btn" onclick="speak(\`${text.replace(/`/g, '')}\`)">🔊 Listen Again</button>
+          ${showKvk ? `<button class="mini-btn warn" onclick="alert('Connecting to Nearest KVK Helpline: 1800-180-1551')">📞 Call KVK Expert</button>` : ''}
+        </div>`;
+      }
+      div.innerHTML = html;
+      chatArea.appendChild(div);
+      chatArea.scrollTop = chatArea.scrollHeight;
+      if (sender === 'bot') speak(text);
+    }
+
+    function changeLang() {
+      chatArea.innerHTML = '';
+      addMessage(getPack().welcome, 'bot', 'Voice Ready');
+    }
+
+    function handleQuery(rawText) {
+      const q = rawText.toLowerCase();
+      const pack = getPack();
+      addMessage(rawText, 'user');
+
+      setTimeout(() => {
+        if (q.includes('noise')) {
+          addMessage(pack.noise, 'bot', 'Noise Filter Alert');
+        } else if (q.includes('hinglish') || (q.includes('fertilizer') && q.includes('kab'))) {
+          addMessage(pack.hinglish, 'bot', 'Mixed Language Parsed');
+        } else if (q.includes('yellow') || q.includes('tomato') || q.includes('leaf') || q.includes('leaves') || q.includes('పసుపు') || q.includes('पीले')) {
+          addMessage(pack.yellow, 'bot', 'Crop Health Advice');
+        } else if (q.includes('rain') || q.includes('weather') || q.includes('వర్షం') || q.includes('बारिश')) {
+          addMessage(pack.weather, 'bot', 'Village Weather');
+        } else if (q.includes('price') || q.includes('market') || q.includes('mandi') || q.includes('ధర') || q.includes('भाव')) {
+          addMessage(pack.market, 'bot', 'Live Mandi Rate');
+        } else {
+          addMessage(pack.unknown, 'bot', 'Low Confidence → Expert Escalation', '', true);
+        }
+      }, 400);
+    }
+
+    function handlePhoto(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        addMessage("Uploaded damaged crop leaf photo", 'user', '', reader.result);
+        setTimeout(() => {
+          addMessage(getPack().photo, 'bot', 'Vision + Voice Diagnosis', '', true);
+        }, 500);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    let recognition = null;
+    let isListening = false;
+
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRec();
+      recognition.interimResults = false;
+      recognition.onstart = () => {
+        isListening = true;
+        micBtn.classList.add('listening');
+        statusText.textContent = "Listening... Speak now";
+      };
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        handleQuery(transcript);
+      };
+      recognition.onerror = () => {
+        statusText.textContent = "Could not hear clearly. Tap mic or use quick test buttons.";
+      };
+      recognition.onend = () => {
+        isListening = false;
+        micBtn.classList.remove('listening');
+        statusText.textContent = "Tap mic and speak in your language";
+      };
+    }
+
+    function toggleMic() {
+      if (!recognition) {
+        alert("Speech Recognition works best in Chrome/Edge. You can also use the quick test buttons below!");
+        return;
+      }
+      if (isListening) {
+        recognition.stop();
+      } else {
+        recognition.lang = langSelect.value;
+        recognition.start();
+      }
+    }
+
+    // Start app with welcome prompt
+    changeLang();
+  </script>
+</body>
+</html>
